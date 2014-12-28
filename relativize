@@ -1,0 +1,24 @@
+#!/bin/bash
+# relativize: recursively convert absolute links to relative links
+# NOTE: only works for links pointing to the same name in the parent dir
+
+shopt -s nullglob
+
+function _relativize {
+    for f in *; do
+        if [ -f "../$f" ]; then
+            rm $f
+            ln -s "../$f" "$f"
+        fi
+    done
+}
+
+_relativize
+
+for d in */; do
+    if [ ! -L "${d%/}" ]; then    
+        cd "$d"
+        relativize
+        cd ..
+    fi
+done

@@ -1,0 +1,100 @@
+#!/bin/bash
+# crosslink: view the intersections of directories through the filesystem
+# usage: crosslink [-d _max-depth_] [dir1 [dir2 [...]]]
+
+shopt -s nullglob # simplifies logic when dealing with globs
+
+# main: initial entry point
+# sanity checks the original call and provides some convenient shorthands
+function main {
+    
+    # if depth set to anything but a non-negative integer, error
+    getopts "d:" opt && d=$OPTARG 
+    shift $((OPTIND-1)); OPTIND=1
+    [[ ! ${d:-0} =~ ^[0-9]+$ ]] &&
+        echo "$0: Bad argument to option -d: $d" >&2 && exit 2
+
+    # if any non-dir arguments passed, error
+    getDirs "$@"
+    [[ ${#nondirs} -gt 0 ]] &&
+        echo "$0: No such directory: ${nondirs[@]}" >&2 && exit 1
+
+    case $# in
+        0) crosslink ${d:+-d $d} */ ;; # cross all dirs in cwd
+        1) cd "$1" && crosslink ${d:+-d $d} */ ;; # cross all dirs in arg dir
+        *) crosslink ${d:+-d $d} "$@" ;; # cross only specified dirs in cwd
+    esac
+}
+
+# crosslink: recursive directory crosslinker
+# takes a number of directories in the current directory and creates
+#+ subdirectories (or equivalent symlinks) named after each other arguments 
+#+ and fills them with relative links to each shared filename 
+# optionally calls itself recursively in each created directory, up to _d_ 
+#+ levels down where _d_ is the argument to the -d option or, if -d not set, 
+#+ infinity (but effectively #args-2)
+function crosslink {
+
+    # get depth option arg if present
+    getopts "d:" opt && d=$OPTARG 
+    shift $((OPTIND-1)); OPTIND=1
+
+    # remove nondirs from arguments
+    getDirs "$@"
+    set -- "${dirs[@]}"
+
+    case $# in
+     [0-1]) return ;; # base case 1: nothing left to do
+     2) # base case 2: crosslink two dirs 
+        set "${1%/}" "${2%/}" # remove trailing slashes for consistency
+        for f in $1/*; do 
+            f=${f##*/} # remove "$1/" leaving basename
+            if [[ -f "$2/$f" ]]; then
+                # shared file found, make subdir+mirror link and create link
+                mkdir "$1/$2" 2>/dev/null
+                ln -sT "../$1/$2" "$2/$1" 2>/dev/null
+                ln -s "../$f" "$1/$2/$f" 2>/dev/null
+            fi
+        done ;;
+     *) # recrusive case: crosslink all pairs of arguments
+        iteratePairs crosslink "$@"
+        # if depth not set or >0, recurse
+        if [[ ${d:-1} -gt 0 ]]; then
+            for subdir in "$@"; do
+                cd "$subdir"
+                crosslink ${d:+-d $((d-1))} "$@" # recurse
+                cd ..
+            done
+        fi ;;
+    esac
+}
+
+# getDirs: splits arguments into two arrays:
+#    dirs    - existing directories
+#    nondirs - everything else
+function getDirs {
+    unset dirs nondirs
+    while [[ $# -gt 0 ]] ; do
+        if [[ -d "$1" ]]; then 
+            dirs=( "${dirs[@]}" "$1" )
+        else
+            nondirs=( "${nondirs[@]}" "$1" )
+        fi
+        shift
+    done
+}
+
+# iteratePairs: call a command with each unique pair of arguments
+# calls the first argument with each of the C(n,2) unique non-ordered pairs #+ of the other arguments as its arguments 
+#+ ( C(n,k) is the binomial coefficient )
+function iteratePairs {
+    command=$1; shift
+    while [[ $# -gt 1 ]]; do
+        a="$1"; shift
+        for b in "$@"; do
+            $command "$a" "$b"
+        done
+    done
+}
+
+main "$@"

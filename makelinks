@@ -1,0 +1,11 @@
+#!/bin/bash
+# makelinks: create links in the current directory from description on stdin
+# input must consist of lines in the format "<location>:<target>"
+# any missing directories will also be created
+
+
+while IFS=':'; read link target; do
+    mkdir -p $(dirname "$link")
+    echo "$link:$target"
+    ln -s "$target" "$link"
+done

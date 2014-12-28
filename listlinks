@@ -1,0 +1,6 @@
+#!/bin/bash
+# listlinks: recursively find and list links and their targets to stdout
+# output is in the format "<location>:<target>"
+# runs in the current directory and location is relative to current directory
+
+find . -type l | while read link; do echo $link:$(readlink $link); done
